@@ -8,12 +8,16 @@ namespace InnovationLab.Landing.Dtos.EventRegistrations;
 public record EventRegistrationResponseDto
 (
     Guid Id,
+    Guid EventId,
     Event? Event,
     EventRegistrationType Type,
+    string TeamName,
     string Name,
     string Email,
     string? Phone,
-    List<TeamMemberResponseDto>? TeamMembers,
+    IList<string> DocumentUrls,
+    IList<TeamMemberResponseDto>? Members,
+    IList<RegistrationCollegeResponseDto>? RegistrationColleges,
     EventRegistrationStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt
