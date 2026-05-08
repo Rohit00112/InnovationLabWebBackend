@@ -354,8 +354,8 @@ namespace InnovationLab.Landing.Migrations
                         .HasMaxLength(6)
                         .HasColumnType("text[]");
 
-                    b.Property<int>("IsRegistrationOpen")
-                        .HasColumnType("integer");
+                    b.Property<bool>("IsRegistrationOpen")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsTeamEvent")
                         .HasColumnType("boolean");
