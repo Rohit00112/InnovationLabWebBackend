@@ -1,4 +1,5 @@
 using InnovationLab.Landing.DbContexts;
+using InnovationLab.Landing.SwaggerFilters;
 using InnovationLab.Shared.Constants;
 using InnovationLab.Shared.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,12 @@ builder.Services.AddOptionsConfigurations(builder.Configuration);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    // Configure Swagger to handle file uploads in form data
+    options.OperationFilter<FileUploadOperationFilter>();
+    options.SchemaFilter<FormDataSchemaFilter>();
+});
 
 builder.Services.AddDbContext<LandingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString(ConfigurationKeys.DbConnection))
