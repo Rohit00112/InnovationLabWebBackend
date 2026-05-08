@@ -1,9 +1,11 @@
+using System.Threading.Channels;
 using InnovationLab.Landing.DbContexts;
 using InnovationLab.Landing.Dtos.EventAgendas;
 using InnovationLab.Landing.Dtos.EventRegistrations;
 using InnovationLab.Landing.Dtos.Events;
 using InnovationLab.Landing.Enums;
 using InnovationLab.Landing.Models;
+using InnovationLab.Landing.Services;
 using InnovationLab.Shared.Enums;
 using InnovationLab.Shared.Interfaces;
 using Mapster;
@@ -22,7 +24,8 @@ public sealed class EventsController(
     IRepository<LandingDbContext, EventRegistration> eventRegistrationRepo,
     IRepository<LandingDbContext, TeamMember> teamMemberRepo,
     IRepository<LandingDbContext, RegistrationCollege> registrationCollegeRepo,
-    IMediaService mediaService
+    IMediaService mediaService,
+    IEventRegistrationNotificationService notificationService
 ) : ControllerBase
 {
     private const string EventRegistrationsDocumentsFolder = "events/registrations";
@@ -34,6 +37,7 @@ public sealed class EventsController(
     private readonly IRepository<LandingDbContext, TeamMember> _teamMemberRepo = teamMemberRepo;
     private readonly IRepository<LandingDbContext, RegistrationCollege> _registrationCollegeRepo = registrationCollegeRepo;
     private readonly IMediaService _mediaService = mediaService;
+    private readonly IEventRegistrationNotificationService _notificationService = notificationService;
 
     [AllowAnonymous]
     [HttpGet(Name = nameof(GetEvents))]
@@ -190,6 +194,24 @@ public sealed class EventsController(
             return NotFound();
         }
 
+        // Validate registration is open
+        if (!@event.IsRegistrationOpen || @event.RegistrationEnd >= DateTimeOffset.Now)
+        {
+            return StatusCode(StatusCodes.Status410Gone, "Registration for this event is no longer open");
+        }
+
+        // Check if registration would exceed max teams
+        var currentRegistrationCount = await _eventRegistrationRepo.QueryAsync(
+            er => er.Where(r => r.EventId == id && r.DeletedAt == null),
+            0,
+            1
+        );
+
+        if (currentRegistrationCount.Count() >= @event.MaxNumberOfTeams)
+        {
+            return StatusCode(StatusCodes.Status410Gone, "Maximum registrations reached for this event");
+        }
+
         // Validate team event requirements
         if (@event.IsTeamEvent)
         {
@@ -268,8 +290,52 @@ public sealed class EventsController(
         await _eventRegistrationRepo.AddAsync(newRegistration);
         await _eventRegistrationRepo.SaveChangesAsync();
 
+        // Reload event to check if registration was auto-closed by trigger
+        var updatedEvent = await _eventRepo.GetByIdAsync(id);
+        if (updatedEvent != null && !updatedEvent.IsRegistrationOpen)
+        {
+            // Notify all subscribers that registration has been closed
+            await _notificationService.NotifyRegistrationClosedAsync(id);
+        }
+
         var registrationDto = newRegistration.Adapt<EventRegistrationResponseDto>();
         return CreatedAtAction(nameof(GetEventRegistration), new { registrationId = registrationDto.Id }, registrationDto);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id}/registrations-closed-stream", Name = nameof(GetRegistrationClosedStream))]
+    public async Task GetRegistrationClosedStream(
+        Guid id,
+        CancellationToken cancellationToken
+    )
+    {
+        var @event = await _eventRepo.GetByIdAsync(id);
+        if (@event is null)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers.Append("Cache-Control", "no-cache");
+        Response.Headers.Append("Connection", "keep-alive");
+
+        var channel = Channel.CreateUnbounded<EventRegistrationNotificationDto>();
+        _notificationService.Subscribe(id, channel);
+
+        try
+        {
+            await foreach (var notification in channel.Reader.ReadAllAsync(cancellationToken))
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(notification);
+                await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            _notificationService.Unsubscribe(id, channel);
+        }
     }
 
     [AllowAnonymous]
