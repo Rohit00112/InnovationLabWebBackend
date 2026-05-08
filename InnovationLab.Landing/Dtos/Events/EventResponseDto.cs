@@ -18,6 +18,8 @@ public record EventResponseDto
     string? SeriesName,
     bool IsTeamEvent,
     int MaxTeamMembers,
+    int MaxNumberOfTeams,
+    bool IsRegistrationOpen,
     DateTimeOffset? RegistrationStart,
     DateTimeOffset? RegistrationEnd,
     DateTimeOffset CreatedAt,

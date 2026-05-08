@@ -8,5 +8,10 @@ namespace InnovationLab.Landing.Dtos.EventRegistrations;
 [AdaptTo(typeof(EventRegistration))]
 public record EventRegistrationUpdateDto
 (
-    [Required] EventRegistrationStatus Status
+    [MinLength(5)][MaxLength(30)] string? TeamName,
+    [MinLength(5)][MaxLength(30)] string? Name,
+    [EmailAddress] string? Email,
+    [Phone] string? Phone,
+    [MinLength(1)] IList<IFormFile>? Documents,
+    EventRegistrationStatus? Status
 );

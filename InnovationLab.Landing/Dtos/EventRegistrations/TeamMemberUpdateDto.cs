@@ -6,12 +6,12 @@ using Mapster;
 namespace InnovationLab.Landing.Dtos.EventRegistrations;
 
 [AdaptTo(typeof(TeamMember))]
-public record TeamMemberCreateDto
+public record TeamMemberUpdateDto
 (
-    [Required] string Name,
-    [Required] string Faculty,
+    string? Name,
+    string? Faculty,
     [EmailAddress] string? Email,
     [Phone] string? Phone,
-    [Required] IFormFile Photo,
-    [Required] Gender Gender
+    IFormFile? Photo,
+    Gender? Gender
 );
