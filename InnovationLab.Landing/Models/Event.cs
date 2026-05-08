@@ -21,4 +21,7 @@ public class Event : BaseModel
     [Required] public required bool IsRegistrationOpen { get; set; } = true;
     public DateTimeOffset? RegistrationStart { get; set; }
     public DateTimeOffset? RegistrationEnd { get; set; }
+
+    public IList<EventRegistration> Registrations { get; set; } = [];
+    public IList<EventAgenda> Agendas { get; set; } = [];
 }
