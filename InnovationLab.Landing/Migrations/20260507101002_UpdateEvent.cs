@@ -10,7 +10,7 @@ namespace InnovationLab.Landing.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
+            migrationBuilder.AddColumn<bool>(
                 name: "IsRegistrationOpen",
                 schema: "landing",
                 table: "Events",
