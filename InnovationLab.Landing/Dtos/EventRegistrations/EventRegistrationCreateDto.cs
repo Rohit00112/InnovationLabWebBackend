@@ -2,9 +2,13 @@ using System.ComponentModel.DataAnnotations;
 using InnovationLab.Landing.Enums;
 using InnovationLab.Landing.Models;
 using Mapster;
+using Microsoft.AspNetCore.Mvc;
 
 namespace InnovationLab.Landing.Dtos.EventRegistrations;
 
+/// <summary>
+/// DTO for creating a new event registration with documents and team members
+/// </summary>
 [AdaptTo(typeof(EventRegistration))]
 public record EventRegistrationCreateDto
 (

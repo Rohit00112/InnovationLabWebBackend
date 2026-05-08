@@ -2,9 +2,13 @@ using System.ComponentModel.DataAnnotations;
 using InnovationLab.Landing.Enums;
 using InnovationLab.Landing.Models;
 using Mapster;
+using Microsoft.AspNetCore.Mvc;
 
 namespace InnovationLab.Landing.Dtos.EventRegistrations;
 
+/// <summary>
+/// DTO for creating a team member with photo upload
+/// </summary>
 [AdaptTo(typeof(TeamMember))]
 public record TeamMemberCreateDto
 (
