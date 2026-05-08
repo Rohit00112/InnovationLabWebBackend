@@ -4,11 +4,13 @@ using InnovationLab.Landing.Dtos.EventRegistrations;
 using InnovationLab.Landing.Dtos.Events;
 using InnovationLab.Landing.Enums;
 using InnovationLab.Landing.Models;
+using InnovationLab.Shared.Enums;
 using InnovationLab.Shared.Interfaces;
 using Mapster;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using InnovationLab.Shared.Extensions;
 
 namespace InnovationLab.Landing.Controllers;
 
@@ -17,12 +19,21 @@ namespace InnovationLab.Landing.Controllers;
 public sealed class EventsController(
     IRepository<LandingDbContext, Event> eventRepo,
     IRepository<LandingDbContext, EventAgenda> eventAgendaRepo,
-    IRepository<LandingDbContext, EventRegistration> eventRegistrationRepo
+    IRepository<LandingDbContext, EventRegistration> eventRegistrationRepo,
+    IRepository<LandingDbContext, TeamMember> teamMemberRepo,
+    IRepository<LandingDbContext, RegistrationCollege> registrationCollegeRepo,
+    IMediaService mediaService
 ) : ControllerBase
 {
+    private const string EventRegistrationsDocumentsFolder = "events/registrations";
+    private const string EventTeamMembersPhotosFolder = "events/team-members";
+
     private readonly IRepository<LandingDbContext, Event> _eventRepo = eventRepo;
     private readonly IRepository<LandingDbContext, EventAgenda> _eventAgendaRepo = eventAgendaRepo;
     private readonly IRepository<LandingDbContext, EventRegistration> _eventRegistrationRepo = eventRegistrationRepo;
+    private readonly IRepository<LandingDbContext, TeamMember> _teamMemberRepo = teamMemberRepo;
+    private readonly IRepository<LandingDbContext, RegistrationCollege> _registrationCollegeRepo = registrationCollegeRepo;
+    private readonly IMediaService _mediaService = mediaService;
 
     [AllowAnonymous]
     [HttpGet(Name = nameof(GetEvents))]
@@ -171,32 +182,54 @@ public sealed class EventsController(
     }
 
     [HttpPost("{id}/register", Name = nameof(RegisterForEvent))]
-    public async Task<ActionResult<EventRegistrationResponseDto>> RegisterForEvent(Guid id, [FromBody] EventRegistrationCreateDto registrationCreateDto)
+    public async Task<ActionResult<EventRegistrationResponseDto>> RegisterForEvent(Guid id, [FromForm] EventRegistrationCreateDto registrationCreateDto)
     {
         var @event = await _eventRepo.GetByIdAsync(id);
-
         if (@event is null)
         {
             return NotFound();
         }
 
+        // Validate team event requirements
         if (@event.IsTeamEvent)
         {
-            if (registrationCreateDto.TeamMembers is null || registrationCreateDto.TeamMembers.Count is 0)
+            if (registrationCreateDto.Members is null || registrationCreateDto.Members.Count is 0)
             {
                 return BadRequest("Team Members are required for team event");
             }
 
-            if (registrationCreateDto.TeamMembers.Count > @event.MaxTeamMembers)
+            if (registrationCreateDto.Members.Count > @event.MaxTeamMembers)
             {
                 return BadRequest($"Maximum of {@event.MaxTeamMembers} team members are only allowed");
             }
         }
         else
         {
-            if (registrationCreateDto.TeamMembers is not null && registrationCreateDto.TeamMembers.Count is not 0)
+            if (registrationCreateDto.Members is not null && registrationCreateDto.Members.Count is not 0)
             {
                 return BadRequest("Team Members are not allowed for solo event");
+            }
+        }
+
+        // Upload documents if provided
+        var documentUrls = new List<string?>();
+        if (registrationCreateDto.Documents is not null && registrationCreateDto.Documents.Count > 0)
+        {
+            foreach (var document in registrationCreateDto.Documents)
+            {
+                var mediaType = document.ContentType.ToMediaType();
+                if (mediaType is not (MediaType.Pdf or MediaType.Image))
+                {
+                    return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Only PDF and Image documents are allowed");
+                }
+
+                var documentUrl = await _mediaService.UploadAsync(document, mediaType, EventRegistrationsDocumentsFolder);
+                if (string.IsNullOrWhiteSpace(documentUrl))
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload document");
+                }
+
+                documentUrls.Add(documentUrl);
             }
         }
 
@@ -204,18 +237,44 @@ public sealed class EventsController(
         newRegistration.EventId = id;
         newRegistration.Type = @event.IsTeamEvent ? EventRegistrationType.Team : EventRegistrationType.Solo;
         newRegistration.Status = EventRegistrationStatus.Pending;
+        newRegistration.DocumentUrls = documentUrls;
+
+        // Handle team members with photos
+        if (registrationCreateDto.Members is not null && registrationCreateDto.Members.Count > 0)
+        {
+            var teamMembers = new List<TeamMember>();
+            foreach (var memberDto in registrationCreateDto.Members)
+            {
+                var photoUrl = await _mediaService.UploadAsync(memberDto.Photo, MediaType.Image, EventTeamMembersPhotosFolder);
+                if (string.IsNullOrWhiteSpace(photoUrl))
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload team member photo");
+                }
+
+                var teamMember = memberDto.Adapt<TeamMember>();
+                teamMember.PhotoUrl = photoUrl;
+                teamMembers.Add(teamMember);
+            }
+
+            newRegistration.Members = teamMembers;
+        }
+
+        // Handle registration colleges if provided
+        if (registrationCreateDto.RegistrationColleges is not null && registrationCreateDto.RegistrationColleges.Count > 0)
+        {
+            newRegistration.RegistrationColleges = registrationCreateDto.RegistrationColleges.Adapt<List<RegistrationCollege>>();
+        }
 
         await _eventRegistrationRepo.AddAsync(newRegistration);
         await _eventRegistrationRepo.SaveChangesAsync();
 
-        var registrationDto = newRegistration.Adapt<EventAgendaResponseDto>();
-
-        return CreatedAtAction(nameof(GetEventRegistrations), new { id = registrationDto.Id }, registrationDto);
+        var registrationDto = newRegistration.Adapt<EventRegistrationResponseDto>();
+        return CreatedAtAction(nameof(GetEventRegistration), new { registrationId = registrationDto.Id }, registrationDto);
     }
 
-    [Authorize]
+    [AllowAnonymous]
     [HttpGet("{id}/registrations", Name = nameof(GetEventRegistrations))]
-    public async Task<ActionResult<List<EventRegistrationResponseDto>>> GetEventRegistrations(
+    public async Task<ActionResult<IList<EventRegistrationResponseDto>>> GetEventRegistrations(
         Guid id,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20
@@ -224,7 +283,7 @@ public sealed class EventsController(
         var skip = (page - 1) * pageSize;
 
         var registrations = await _eventRegistrationRepo.QueryAsync(
-            er => er.Where(r => r.EventId == id),
+            er => er.Include(r => r.Members).Include(r => r.RegistrationColleges).Where(r => r.EventId == id),
             skip,
             pageSize
         );
@@ -233,24 +292,314 @@ public sealed class EventsController(
         return Ok(registrationsDto);
     }
 
-    [Authorize]
-    [HttpPatch("registrations/{registrationId}/status", Name = nameof(UpdateEventRegistrationStatus))]
-    public async Task<ActionResult> UpdateEventRegistrationStatus(
-        Guid registrationId,
-        [FromBody] EventRegistrationUpdateDto registrationUpdateDto
-    )
+    [AllowAnonymous]
+    [HttpGet("registrations/{registrationId}", Name = nameof(GetEventRegistration))]
+    public async Task<ActionResult<EventRegistrationResponseDto>> GetEventRegistration(Guid registrationId)
     {
-        var registration = await _eventRegistrationRepo.GetByIdAsync(registrationId);
+        var registrations = await _eventRegistrationRepo.QueryAsync(
+            er => er.Include(r => r.Members).Include(r => r.RegistrationColleges).Where(r => r.Id == registrationId),
+            0,
+            1
+        );
 
+        var registration = registrations.FirstOrDefault();
         if (registration is null)
         {
             return NotFound();
         }
 
-        registrationUpdateDto.Adapt(registration);
+        var registrationDto = registration.Adapt<EventRegistrationResponseDto>();
+        return Ok(registrationDto);
+    }
+
+    [Authorize]
+    [HttpPut("registrations/{registrationId}", Name = nameof(UpdateEventRegistration))]
+    public async Task<ActionResult> UpdateEventRegistration(Guid registrationId, [FromForm] EventRegistrationUpdateDto registrationUpdateDto)
+    {
+        var registration = await _eventRegistrationRepo.GetByIdAsync(registrationId);
+        if (registration is null)
+        {
+            return NotFound();
+        }
+
+        // Upload new documents if provided
+        if (registrationUpdateDto.Documents is not null && registrationUpdateDto.Documents.Count > 0)
+        {
+            foreach (var document in registrationUpdateDto.Documents)
+            {
+                var mediaType = document.ContentType.ToMediaType();
+                if (mediaType is not (MediaType.Pdf or MediaType.Image))
+                {
+                    return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Only PDF and Image documents are allowed");
+                }
+
+                var documentUrl = await _mediaService.UploadAsync(document, mediaType, EventRegistrationsDocumentsFolder);
+                if (string.IsNullOrWhiteSpace(documentUrl))
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload document");
+                }
+
+                registration.DocumentUrls.Add(documentUrl);
+            }
+        }
+
+        // Update basic fields
+        if (!string.IsNullOrWhiteSpace(registrationUpdateDto.TeamName))
+            registration.TeamName = registrationUpdateDto.TeamName;
+
+        if (!string.IsNullOrWhiteSpace(registrationUpdateDto.Name))
+            registration.Name = registrationUpdateDto.Name;
+
+        if (!string.IsNullOrWhiteSpace(registrationUpdateDto.Email))
+            registration.Email = registrationUpdateDto.Email;
+
+        if (!string.IsNullOrWhiteSpace(registrationUpdateDto.Phone))
+            registration.Phone = registrationUpdateDto.Phone;
+
+        if (registrationUpdateDto.Status.HasValue)
+            registration.Status = registrationUpdateDto.Status.Value;
 
         _eventRegistrationRepo.Update(registration);
         await _eventRegistrationRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpDelete("registrations/{registrationId}", Name = nameof(DeleteEventRegistration))]
+    public async Task<ActionResult> DeleteEventRegistration(Guid registrationId)
+    {
+        var registration = await _eventRegistrationRepo.GetByIdAsync(registrationId);
+        if (registration is null)
+        {
+            return NotFound();
+        }
+
+        _eventRegistrationRepo.SoftDelete(registration);
+        await _eventRegistrationRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    // Team Members Endpoints
+    [AllowAnonymous]
+    [HttpGet("registrations/{registrationId}/members", Name = nameof(GetTeamMembers))]
+    public async Task<ActionResult<IList<TeamMemberResponseDto>>> GetTeamMembers(
+        Guid registrationId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20
+    )
+    {
+        var skip = (page - 1) * pageSize;
+
+        var members = await _teamMemberRepo.QueryAsync(
+            m => m.Where(m => m.RegistrationId == registrationId),
+            skip,
+            pageSize
+        );
+
+        var membersDto = members.Adapt<IList<TeamMemberResponseDto>>();
+        return Ok(membersDto);
+    }
+
+    [Authorize]
+    [HttpPost("registrations/{registrationId}/members", Name = nameof(AddTeamMember))]
+    public async Task<ActionResult<TeamMemberResponseDto>> AddTeamMember(Guid registrationId, [FromForm] TeamMemberCreateDto memberCreateDto)
+    {
+        var registration = await _eventRegistrationRepo.GetByIdAsync(registrationId);
+        if (registration is null)
+        {
+            return NotFound();
+        }
+
+        var mediaType = memberCreateDto.Photo.ContentType.ToMediaType();
+        if (mediaType is not MediaType.Image)
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Only image files are allowed for photos");
+        }
+
+        var photoUrl = await _mediaService.UploadAsync(memberCreateDto.Photo, mediaType, EventTeamMembersPhotosFolder);
+        if (string.IsNullOrWhiteSpace(photoUrl))
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload photo");
+        }
+
+        var teamMember = memberCreateDto.Adapt<TeamMember>();
+        teamMember.RegistrationId = registrationId;
+        teamMember.PhotoUrl = photoUrl;
+
+        await _teamMemberRepo.AddAsync(teamMember);
+        await _teamMemberRepo.SaveChangesAsync();
+
+        var memberDto = teamMember.Adapt<TeamMemberResponseDto>();
+        return CreatedAtAction(nameof(GetTeamMember), new { memberId = memberDto.Id }, memberDto);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("members/{memberId}", Name = nameof(GetTeamMember))]
+    public async Task<ActionResult<TeamMemberResponseDto>> GetTeamMember(Guid memberId)
+    {
+        var member = await _teamMemberRepo.GetByIdAsync(memberId);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        var memberDto = member.Adapt<TeamMemberResponseDto>();
+        return Ok(memberDto);
+    }
+
+    [Authorize]
+    [HttpPut("members/{memberId}", Name = nameof(UpdateTeamMember))]
+    public async Task<ActionResult> UpdateTeamMember(Guid memberId, [FromForm] TeamMemberUpdateDto memberUpdateDto)
+    {
+        var member = await _teamMemberRepo.GetByIdAsync(memberId);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        // Handle photo update if provided
+        if (memberUpdateDto.Photo is not null && memberUpdateDto.Photo.Length > 0)
+        {
+            var mediaType = memberUpdateDto.Photo.ContentType.ToMediaType();
+            if (mediaType is not MediaType.Image)
+            {
+                return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Only image files are allowed");
+            }
+
+            var photoUrl = await _mediaService.UploadAsync(memberUpdateDto.Photo, mediaType, EventTeamMembersPhotosFolder);
+            if (string.IsNullOrWhiteSpace(photoUrl))
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload photo");
+            }
+
+            member.PhotoUrl = photoUrl;
+        }
+
+        // Update other fields
+        if (!string.IsNullOrWhiteSpace(memberUpdateDto.Name))
+            member.Name = memberUpdateDto.Name;
+
+        if (!string.IsNullOrWhiteSpace(memberUpdateDto.Faculty))
+            member.Faculty = memberUpdateDto.Faculty;
+
+        if (!string.IsNullOrWhiteSpace(memberUpdateDto.Email))
+            member.Email = memberUpdateDto.Email;
+
+        if (!string.IsNullOrWhiteSpace(memberUpdateDto.Phone))
+            member.Phone = memberUpdateDto.Phone;
+
+        if (memberUpdateDto.Gender.HasValue)
+            member.Gender = memberUpdateDto.Gender.Value;
+
+        _teamMemberRepo.Update(member);
+        await _teamMemberRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpDelete("members/{memberId}", Name = nameof(DeleteTeamMember))]
+    public async Task<ActionResult> DeleteTeamMember(Guid memberId)
+    {
+        var member = await _teamMemberRepo.GetByIdAsync(memberId);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        _teamMemberRepo.SoftDelete(member);
+        await _teamMemberRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    // Registration Colleges Endpoints
+    [AllowAnonymous]
+    [HttpGet("registrations/{registrationId}/colleges", Name = nameof(GetRegistrationColleges))]
+    public async Task<ActionResult<IList<RegistrationCollegeResponseDto>>> GetRegistrationColleges(
+        Guid registrationId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20
+    )
+    {
+        var skip = (page - 1) * pageSize;
+
+        var colleges = await _registrationCollegeRepo.QueryAsync(
+            c => c.Where(c => c.RegistrationId == registrationId),
+            skip,
+            pageSize
+        );
+
+        var collegesDto = colleges.Adapt<IList<RegistrationCollegeResponseDto>>();
+        return Ok(collegesDto);
+    }
+
+    [Authorize]
+    [HttpPost("registrations/{registrationId}/colleges", Name = nameof(AddRegistrationCollege))]
+    public async Task<ActionResult<RegistrationCollegeResponseDto>> AddRegistrationCollege(Guid registrationId, [FromBody] RegistrationCollegeCreateDto collegeCreateDto)
+    {
+        var registration = await _eventRegistrationRepo.GetByIdAsync(registrationId);
+        if (registration is null)
+        {
+            return NotFound();
+        }
+
+        var college = collegeCreateDto.Adapt<RegistrationCollege>();
+        college.RegistrationId = registrationId;
+
+        await _registrationCollegeRepo.AddAsync(college);
+        await _registrationCollegeRepo.SaveChangesAsync();
+
+        var collegeDto = college.Adapt<RegistrationCollegeResponseDto>();
+        return CreatedAtAction(nameof(GetRegistrationCollege), new { collegeId = collegeDto.Id }, collegeDto);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("colleges/{collegeId}", Name = nameof(GetRegistrationCollege))]
+    public async Task<ActionResult<RegistrationCollegeResponseDto>> GetRegistrationCollege(Guid collegeId)
+    {
+        var college = await _registrationCollegeRepo.GetByIdAsync(collegeId);
+        if (college is null)
+        {
+            return NotFound();
+        }
+
+        var collegeDto = college.Adapt<RegistrationCollegeResponseDto>();
+        return Ok(collegeDto);
+    }
+
+    [Authorize]
+    [HttpPut("colleges/{collegeId}", Name = nameof(UpdateRegistrationCollege))]
+    public async Task<ActionResult> UpdateRegistrationCollege(Guid collegeId, [FromBody] RegistrationCollegeUpdateDto collegeUpdateDto)
+    {
+        var college = await _registrationCollegeRepo.GetByIdAsync(collegeId);
+        if (college is null)
+        {
+            return NotFound();
+        }
+
+        collegeUpdateDto.Adapt(college);
+
+        _registrationCollegeRepo.Update(college);
+        await _registrationCollegeRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpDelete("colleges/{collegeId}", Name = nameof(DeleteRegistrationCollege))]
+    public async Task<ActionResult> DeleteRegistrationCollege(Guid collegeId)
+    {
+        var college = await _registrationCollegeRepo.GetByIdAsync(collegeId);
+        if (college is null)
+        {
+            return NotFound();
+        }
+
+        _registrationCollegeRepo.SoftDelete(college);
+        await _registrationCollegeRepo.SaveChangesAsync();
 
         return NoContent();
     }
