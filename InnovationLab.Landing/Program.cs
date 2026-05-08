@@ -1,4 +1,5 @@
 using InnovationLab.Landing.DbContexts;
+using InnovationLab.Landing.Services;
 using InnovationLab.Landing.SwaggerFilters;
 using InnovationLab.Shared.Constants;
 using InnovationLab.Shared.Extensions;
@@ -28,6 +29,7 @@ builder.Services.AddCloudinary(builder.Configuration);
 
 // Register Dependency Injections
 builder.Services.AddSharedServices();
+builder.Services.AddSingleton<IEventRegistrationNotificationService, EventRegistrationNotificationService>();
 
 var app = builder.Build();
 
