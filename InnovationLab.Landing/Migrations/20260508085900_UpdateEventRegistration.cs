@@ -53,15 +53,6 @@ namespace InnovationLab.Landing.Migrations
                 nullable: false,
                 defaultValue: "");
 
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsRegistrationOpen",
-                schema: "landing",
-                table: "Events",
-                type: "boolean",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "integer");
-
             migrationBuilder.AddColumn<string>(
                 name: "TeamName",
                 schema: "landing",
