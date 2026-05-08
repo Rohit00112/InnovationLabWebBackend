@@ -17,8 +17,8 @@ public class Event : BaseModel
     public string? SeriesName { get; set; }
     [Required] public required bool IsTeamEvent { get; set; }
     [Required] public required int MaxTeamMembers { get; set; }
-    [Required] public required int MaxNumberOfTeams { get; set; }
-    [Required] public required int IsRegistrationOpen { get; set; }
+    [Required] public required int MaxNumberOfTeams { get; set; } = int.MaxValue;
+    [Required] public required bool IsRegistrationOpen { get; set; } = true;
     public DateTimeOffset? RegistrationStart { get; set; }
     public DateTimeOffset? RegistrationEnd { get; set; }
 }
