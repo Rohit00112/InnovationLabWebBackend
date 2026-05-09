@@ -1,4 +1,5 @@
 using InnovationLab.Landing.Models;
+using InnovationLab.Landing.Dtos.Events;
 using Mapster;
 using InnovationLab.Landing.Enums;
 
@@ -9,7 +10,7 @@ public record EventRegistrationResponseDto
 (
     Guid Id,
     Guid EventId,
-    Event? Event,
+    EventResponseDto? Event,
     EventRegistrationType Type,
     string TeamName,
     string Name,
