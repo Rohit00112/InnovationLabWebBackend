@@ -3,6 +3,7 @@ using InnovationLab.Landing.Services;
 using InnovationLab.Landing.SwaggerFilters;
 using InnovationLab.Shared.Constants;
 using InnovationLab.Shared.Extensions;
+using InnovationLab.Shared.Middlewares;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +45,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
