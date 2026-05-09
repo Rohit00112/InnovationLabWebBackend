@@ -235,7 +235,7 @@ public sealed class EventsController(
         {
             foreach (var document in registrationCreateDto.Documents)
             {
-                if (document is null || document.Length == 0)
+                if ((object?)document is null || document.Length == 0)
                 {
                     return BadRequest("Each uploaded document must be provided and non-empty");
                 }
@@ -268,7 +268,7 @@ public sealed class EventsController(
             var teamMembers = new List<TeamMember>();
             foreach (var memberDto in registrationCreateDto.Members)
             {
-                if (memberDto is null || memberDto.Photo is null || memberDto.Photo.Length == 0)
+                if ((object?)memberDto is null || (object?)memberDto.Photo is null || memberDto.Photo.Length == 0)
                 {
                     return BadRequest("Each team member must include a non-empty photo");
                 }
@@ -304,7 +304,7 @@ public sealed class EventsController(
             await _notificationService.NotifyRegistrationClosedAsync(id);
         }
 
-        var registrationDto = newRegistration.Adapt<EventRegistrationResponseDto>();
+        var registrationDto = EventRegistrationResponseDto.FromModel(newRegistration);
         return CreatedAtAction(nameof(GetEventRegistration), new { registrationId = registrationDto.Id }, registrationDto);
     }
 
@@ -360,7 +360,7 @@ public sealed class EventsController(
             pageSize
         );
 
-        var registrationsDto = registrations.Adapt<IList<EventRegistrationResponseDto>>();
+        var registrationsDto = EventRegistrationResponseDto.FromModels(registrations);
         return Ok(registrationsDto);
     }
 
@@ -380,7 +380,7 @@ public sealed class EventsController(
             return NotFound();
         }
 
-        var registrationDto = registration.Adapt<EventRegistrationResponseDto>();
+        var registrationDto = EventRegistrationResponseDto.FromModel(registration);
         return Ok(registrationDto);
     }
 

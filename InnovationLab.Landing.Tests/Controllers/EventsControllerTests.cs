@@ -10,7 +10,6 @@ using InnovationLab.Shared.Interfaces;
 using InnovationLab.Shared.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Mapster;
 using Xunit;
 
 namespace InnovationLab.Landing.Tests.Controllers;
@@ -162,11 +161,35 @@ public sealed class EventsControllerTests
 
         registration.Event.Registrations.Add(registration);
 
-        var dto = registration.Adapt<EventRegistrationResponseDto>();
+        var dto = EventRegistrationResponseDto.FromModel(registration);
         var eventDto = Assert.IsType<EventResponseDto>(dto.Event);
 
         Assert.Equal(eventId, eventDto.Id);
         Assert.True(eventDto.Title == "Innovation Summit");
+    }
+
+    [Fact]
+    public void EventRegistrationResponseDto_FromModel_HandlesOptionalValuesSafely()
+    {
+        var registration = new EventRegistration
+        {
+            EventId = Guid.NewGuid(),
+            Type = EventRegistrationType.Solo,
+            TeamName = "Solo Runner",
+            Name = "Runner One",
+            Email = "runner@example.com",
+            DocumentUrls = [null, string.Empty, "https://cdn.example.com/doc.pdf"],
+            Members = null,
+            RegistrationColleges = null
+        };
+
+        var dto = EventRegistrationResponseDto.FromModel(registration);
+
+        Assert.Null(dto.Event);
+        Assert.Single(dto.DocumentUrls);
+        Assert.Equal("https://cdn.example.com/doc.pdf", dto.DocumentUrls[0]);
+        Assert.Null(dto.Members);
+        Assert.Null(dto.RegistrationColleges);
     }
 
     private static EventsController CreateController(
