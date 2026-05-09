@@ -3,6 +3,7 @@ using InnovationLab.Landing.Services;
 using InnovationLab.Landing.SwaggerFilters;
 using InnovationLab.Shared.Constants;
 using InnovationLab.Shared.Extensions;
+using InnovationLab.Shared.Middlewares;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +28,8 @@ builder.Services.AddDbContext<LandingDbContext>(options =>
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddCloudinary(builder.Configuration);
 
+builder.Services.AddSlidingWindowRateLimiter();
+
 // Register Dependency Injections
 builder.Services.AddSharedServices();
 builder.Services.AddSingleton<IEventRegistrationNotificationService, EventRegistrationNotificationService>();
@@ -43,7 +46,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseRateLimiter();
+
 app.UseHttpsRedirection();
+
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
