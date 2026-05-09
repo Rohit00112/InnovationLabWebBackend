@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 using InnovationLab.Landing.Enums;
 using InnovationLab.Landing.Models;
 using Mapster;
-using Microsoft.AspNetCore.Mvc;
 
 namespace InnovationLab.Landing.Dtos.EventRegistrations;
 

@@ -5,6 +5,7 @@ using InnovationLab.Auth.Models;
 using InnovationLab.Auth.Services;
 using InnovationLab.Shared.Constants;
 using InnovationLab.Shared.Extensions;
+using InnovationLab.Shared.Middlewares;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,6 +36,8 @@ builder.Services.AddIdentity<User, Role>(options =>
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddCloudinary(builder.Configuration);
 
+builder.Services.AddSlidingWindowRateLimiter();
+
 // Register Dependency Injections
 builder.Services.AddSharedServices();
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -52,7 +55,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseRateLimiter();
+
 app.UseHttpsRedirection();
+
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();
 app.UseMiddleware<SecurityStampValidatorMiddleware>();
