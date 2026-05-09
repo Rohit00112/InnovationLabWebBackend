@@ -195,7 +195,7 @@ public sealed class EventsController(
         }
 
         // Validate registration is open
-        if (!@event.IsRegistrationOpen || @event.RegistrationEnd >= DateTimeOffset.Now)
+        if (!@event.IsRegistrationOpen || @event.RegistrationEnd <= DateTimeOffset.Now)
         {
             return StatusCode(StatusCodes.Status410Gone, "Registration for this event is no longer open");
         }
