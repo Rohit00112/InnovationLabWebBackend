@@ -195,7 +195,7 @@ public sealed class EventsController(
         }
 
         // Validate registration is open
-        if (!@event.IsRegistrationOpen || @event.RegistrationEnd >= DateTimeOffset.Now)
+        if (!@event.IsRegistrationOpen || @event.RegistrationEnd <= DateTimeOffset.Now)
         {
             return StatusCode(StatusCodes.Status410Gone, "Registration for this event is no longer open");
         }
@@ -459,7 +459,7 @@ public sealed class EventsController(
         var skip = (page - 1) * pageSize;
 
         var members = await _teamMemberRepo.QueryAsync(
-            m => m.Where(m => m.RegistrationId == registrationId),
+            m => m.Where(mem => mem.RegistrationId == registrationId),
             skip,
             pageSize
         );
@@ -593,7 +593,7 @@ public sealed class EventsController(
         var skip = (page - 1) * pageSize;
 
         var colleges = await _registrationCollegeRepo.QueryAsync(
-            c => c.Where(c => c.RegistrationId == registrationId),
+            c => c.Where(col => col.RegistrationId == registrationId),
             skip,
             pageSize
         );
