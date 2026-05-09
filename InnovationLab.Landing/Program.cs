@@ -28,6 +28,8 @@ builder.Services.AddDbContext<LandingDbContext>(options =>
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddCloudinary(builder.Configuration);
 
+builder.Services.AddSlidingWindowRateLimiter();
+
 // Register Dependency Injections
 builder.Services.AddSharedServices();
 builder.Services.AddSingleton<IEventRegistrationNotificationService, EventRegistrationNotificationService>();
@@ -43,6 +45,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseRateLimiter();
 
 app.UseHttpsRedirection();
 
