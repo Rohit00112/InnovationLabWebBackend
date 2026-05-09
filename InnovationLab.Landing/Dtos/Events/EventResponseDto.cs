@@ -23,5 +23,5 @@ public record EventResponseDto
     DateTimeOffset? RegistrationStart,
     DateTimeOffset? RegistrationEnd,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt
+    DateTimeOffset? UpdatedAt
 );

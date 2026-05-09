@@ -201,13 +201,9 @@ public sealed class EventsController(
         }
 
         // Check if registration would exceed max teams
-        var currentRegistrationCount = await _eventRegistrationRepo.QueryAsync(
-            er => er.Where(r => r.EventId == id && r.DeletedAt == null),
-            0,
-            1
-        );
+        var currentRegistrationCount = await _eventRegistrationRepo.CountAsync(r => r.EventId == id && r.DeletedAt == null);
 
-        if (currentRegistrationCount.Count() >= @event.MaxNumberOfTeams)
+        if (currentRegistrationCount >= @event.MaxNumberOfTeams)
         {
             return StatusCode(StatusCodes.Status410Gone, "Maximum registrations reached for this event");
         }
@@ -239,6 +235,11 @@ public sealed class EventsController(
         {
             foreach (var document in registrationCreateDto.Documents)
             {
+                if ((object?)document is null || document.Length == 0)
+                {
+                    return BadRequest("Each uploaded document must be provided and non-empty");
+                }
+
                 var mediaType = document.ContentType.ToMediaType();
                 if (mediaType is not (MediaType.Pdf or MediaType.Image))
                 {
@@ -267,6 +268,11 @@ public sealed class EventsController(
             var teamMembers = new List<TeamMember>();
             foreach (var memberDto in registrationCreateDto.Members)
             {
+                if ((object?)memberDto is null || (object?)memberDto.Photo is null || memberDto.Photo.Length == 0)
+                {
+                    return BadRequest("Each team member must include a non-empty photo");
+                }
+
                 var photoUrl = await _mediaService.UploadAsync(memberDto.Photo, MediaType.Image, EventTeamMembersPhotosFolder);
                 if (string.IsNullOrWhiteSpace(photoUrl))
                 {
@@ -298,7 +304,7 @@ public sealed class EventsController(
             await _notificationService.NotifyRegistrationClosedAsync(id);
         }
 
-        var registrationDto = newRegistration.Adapt<EventRegistrationResponseDto>();
+        var registrationDto = EventRegistrationResponseDto.FromModel(newRegistration);
         return CreatedAtAction(nameof(GetEventRegistration), new { registrationId = registrationDto.Id }, registrationDto);
     }
 
@@ -354,7 +360,7 @@ public sealed class EventsController(
             pageSize
         );
 
-        var registrationsDto = registrations.Adapt<IList<EventRegistrationResponseDto>>();
+        var registrationsDto = EventRegistrationResponseDto.FromModels(registrations);
         return Ok(registrationsDto);
     }
 
@@ -374,7 +380,7 @@ public sealed class EventsController(
             return NotFound();
         }
 
-        var registrationDto = registration.Adapt<EventRegistrationResponseDto>();
+        var registrationDto = EventRegistrationResponseDto.FromModel(registration);
         return Ok(registrationDto);
     }
 
