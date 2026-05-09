@@ -46,20 +46,6 @@ services:
     networks:
       - innovationlab
 
-  learn-api:
-    build:
-      context: .
-      dockerfile: InnovationLab.Learn/Dockerfile
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-    ports:
-      - "5003:8080"
-    networks:
-      - innovationlab
-
 volumes:
   db_data:
 
