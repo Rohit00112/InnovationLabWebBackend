@@ -8,6 +8,7 @@ public class LandingDbContext(DbContextOptions<LandingDbContext> options) : DbCo
 {
     public DbSet<Testimonial> Testimonials { get; set; }
     public DbSet<Event> Events { get; set; }
+    public DbSet<EventGallery> EventGallery { get; set; }
     public DbSet<EventAgenda> EventAgendas { get; set; }
     public DbSet<AgendaItem> AgendaItems { get; set; }
     public DbSet<EventRegistration> EventRegistrations { get; set; }
