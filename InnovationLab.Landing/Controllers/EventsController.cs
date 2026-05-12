@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using InnovationLab.Landing.DbContexts;
 using InnovationLab.Landing.Dtos.EventAgendas;
+using InnovationLab.Landing.Dtos.EventGallery;
 using InnovationLab.Landing.Dtos.EventRegistrations;
 using InnovationLab.Landing.Dtos.Events;
 using InnovationLab.Landing.Enums;
@@ -21,6 +22,7 @@ namespace InnovationLab.Landing.Controllers;
 public sealed class EventsController(
     IRepository<LandingDbContext, Event> eventRepo,
     IRepository<LandingDbContext, EventAgenda> eventAgendaRepo,
+    IRepository<LandingDbContext, EventGallery> eventGalleryRepo,
     IRepository<LandingDbContext, EventRegistration> eventRegistrationRepo,
     IRepository<LandingDbContext, TeamMember> teamMemberRepo,
     IRepository<LandingDbContext, RegistrationCollege> registrationCollegeRepo,
@@ -30,9 +32,11 @@ public sealed class EventsController(
 {
     private const string EventRegistrationsDocumentsFolder = "events/registrations";
     private const string EventTeamMembersPhotosFolder = "events/team-members";
+    private const string EventGalleryMediaFolder = "events/gallery";
 
     private readonly IRepository<LandingDbContext, Event> _eventRepo = eventRepo;
     private readonly IRepository<LandingDbContext, EventAgenda> _eventAgendaRepo = eventAgendaRepo;
+    private readonly IRepository<LandingDbContext, EventGallery> _eventGalleryRepo = eventGalleryRepo;
     private readonly IRepository<LandingDbContext, EventRegistration> _eventRegistrationRepo = eventRegistrationRepo;
     private readonly IRepository<LandingDbContext, TeamMember> _teamMemberRepo = teamMemberRepo;
     private readonly IRepository<LandingDbContext, RegistrationCollege> _registrationCollegeRepo = registrationCollegeRepo;
@@ -181,6 +185,143 @@ public sealed class EventsController(
 
         _eventAgendaRepo.HardDelete(agenda);
         await _eventAgendaRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id}/gallery", Name = nameof(GetEventGallery))]
+    public async Task<ActionResult<IList<EventGalleryResponseDto>>> GetEventGallery(
+        Guid id,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20
+    )
+    {
+        var skip = (page - 1) * pageSize;
+
+        var galleryItems = await _eventGalleryRepo.QueryAsync(
+            q => q.Where(g => g.EventId == id),
+            skip,
+            pageSize
+        );
+
+        var galleryItemsDto = galleryItems.Adapt<IList<EventGalleryResponseDto>>();
+        return Ok(galleryItemsDto);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("gallery/{galleryId}", Name = nameof(GetEventGalleryById))]
+    public async Task<ActionResult<EventGalleryResponseDto>> GetEventGalleryById(Guid galleryId)
+    {
+        var galleryItem = await _eventGalleryRepo.GetByIdAsync(galleryId);
+        if (galleryItem is null)
+        {
+            return NotFound();
+        }
+
+        var galleryItemDto = galleryItem.Adapt<EventGalleryResponseDto>();
+        return Ok(galleryItemDto);
+    }
+
+    [Authorize]
+    [HttpPost("{id}/gallery", Name = nameof(CreateEventGallery))]
+    public async Task<ActionResult<EventGalleryResponseDto>> CreateEventGallery(Guid id, [FromForm] EventGalleryCreateDto galleryCreateDto)
+    {
+        var @event = await _eventRepo.GetByIdAsync(id);
+        if (@event is null)
+        {
+            return NotFound();
+        }
+
+        if (galleryCreateDto.Type is not (MediaType.Image or MediaType.Video))
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Event gallery only supports image and video media types");
+        }
+
+        var mediaType = galleryCreateDto.Image.ContentType.ToMediaType();
+        if (mediaType is MediaType.NotSupported)
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Uploaded file type is not supported");
+        }
+
+        if (mediaType != galleryCreateDto.Type)
+        {
+            return BadRequest("Uploaded file type must match the provided media type");
+        }
+
+        var mediaUrl = await _mediaService.UploadAsync(galleryCreateDto.Image, mediaType, EventGalleryMediaFolder);
+        if (string.IsNullOrWhiteSpace(mediaUrl))
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload gallery media");
+        }
+
+        var galleryItem = galleryCreateDto.Adapt<EventGallery>();
+        galleryItem.EventId = id;
+        galleryItem.ImageUrl = mediaUrl;
+
+        await _eventGalleryRepo.AddAsync(galleryItem);
+        await _eventGalleryRepo.SaveChangesAsync();
+
+        var galleryItemDto = galleryItem.Adapt<EventGalleryResponseDto>();
+        return CreatedAtAction(nameof(GetEventGalleryById), new { galleryId = galleryItemDto.Id }, galleryItemDto);
+    }
+
+    [Authorize]
+    [HttpPut("gallery/{galleryId}", Name = nameof(UpdateEventGallery))]
+    public async Task<ActionResult> UpdateEventGallery(Guid galleryId, [FromForm] EventGalleryUpdateDto galleryUpdateDto)
+    {
+        var galleryItem = await _eventGalleryRepo.GetByIdAsync(galleryId);
+        if (galleryItem is null)
+        {
+            return NotFound();
+        }
+
+        if (galleryUpdateDto.Type is not (MediaType.Image or MediaType.Video))
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Event gallery only supports image and video media types");
+        }
+
+        if (galleryUpdateDto.Image is not null && galleryUpdateDto.Image.Length > 0)
+        {
+            var mediaType = galleryUpdateDto.Image.ContentType.ToMediaType();
+            if (mediaType is MediaType.NotSupported)
+            {
+                return StatusCode(StatusCodes.Status415UnsupportedMediaType, "Uploaded file type is not supported");
+            }
+
+            if (mediaType != galleryUpdateDto.Type)
+            {
+                return BadRequest("Uploaded file type must match the provided media type");
+            }
+
+            var mediaUrl = await _mediaService.UploadAsync(galleryUpdateDto.Image, mediaType, EventGalleryMediaFolder);
+            if (string.IsNullOrWhiteSpace(mediaUrl))
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to upload gallery media");
+            }
+
+            galleryItem.ImageUrl = mediaUrl;
+        }
+
+        galleryUpdateDto.Adapt(galleryItem);
+        _eventGalleryRepo.Update(galleryItem);
+        await _eventGalleryRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpDelete("gallery/{galleryId}", Name = nameof(DeleteEventGallery))]
+    public async Task<ActionResult> DeleteEventGallery(Guid galleryId)
+    {
+        var galleryItem = await _eventGalleryRepo.GetByIdAsync(galleryId);
+        if (galleryItem is null)
+        {
+            return NotFound();
+        }
+
+        _eventGalleryRepo.SoftDelete(galleryItem);
+        await _eventGalleryRepo.SaveChangesAsync();
 
         return NoContent();
     }
