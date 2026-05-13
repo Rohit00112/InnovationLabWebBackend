@@ -24,4 +24,5 @@ public class Event : BaseModel
 
     public IList<EventRegistration> Registrations { get; set; } = [];
     public IList<EventAgenda> Agendas { get; set; } = [];
+    public IList<EventGallery> Gallery { get; set; } = [];
 }
