@@ -11,7 +11,7 @@ services:
   innovation-lab-landing-api:
     build:
       context: .
-      dockerfile: InnovationLab.Auth/Dockerfile
+      dockerfile: InnovationLab.Landing/Dockerfile
     image: registry.ing.com.np/innovation-lab-backend-prod/innovation-lab-landing-api-prod:latest
     pull_policy: always
     restart: always
