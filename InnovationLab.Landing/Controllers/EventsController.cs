@@ -349,6 +349,14 @@ public sealed class EventsController(
             return StatusCode(StatusCodes.Status410Gone, "Maximum registrations reached for this event");
         }
 
+        Console.WriteLine($"Members count: {registrationCreateDto.Members?.Count}");
+
+        foreach (var m in registrationCreateDto.Members ?? [])
+        {
+            Console.WriteLine($"Name: {m?.Name}");
+            Console.WriteLine($"Photo null: {m?.Photo is null}");
+        }
+
         // Validate team event requirements
         if (@event.IsTeamEvent)
         {
