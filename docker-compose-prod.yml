@@ -1,0 +1,21 @@
+services:
+  innovation-lab-auth-api:
+    build:
+      context: .
+      dockerfile: InnovationLab.Auth/Dockerfile
+    image: registry.ing.com.np/innovation-lab-backend-prod/innovation-lab-auth-api-prod:latest
+    pull_policy: always
+    ports:
+      - "5001:8080"
+
+  innovation-lab-landing-api:
+    build:
+      context: .
+      dockerfile: InnovationLab.Landing/Dockerfile
+    image: registry.ing.com.np/innovation-lab-backend-prod/innovation-lab-landing-api-prod:latest
+    pull_policy: always
+    restart: always
+    ports:
+      - "5003:8080"
+
+
