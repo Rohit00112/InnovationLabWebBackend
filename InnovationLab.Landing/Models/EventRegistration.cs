@@ -15,7 +15,7 @@ public class EventRegistration : BaseModel
     [Required][EmailAddress] public required string Email { get; set; }
     [Phone] public string? Phone { get; set; }
     public EventRegistrationStatus Status { get; set; } = EventRegistrationStatus.Pending;
-    public required IList<string?> DocumentUrls = [];
+    public required IList<string?> DocumentUrls { get; set; } = [];
 
     public IList<TeamMember>? Members { get; set; }
     public IList<RegistrationCollege>? RegistrationColleges { get; set; }
