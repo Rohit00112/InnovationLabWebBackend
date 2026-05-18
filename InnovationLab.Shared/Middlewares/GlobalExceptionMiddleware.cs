@@ -17,6 +17,7 @@ public class GlobalExceptionMiddleware(RequestDelegate next)
         }
         catch (Exception ex)
         {
+            Console.WriteLine(ex);
             var traceId = context.TraceIdentifier;
             int statusCode = 500;
             string message = "An unexpected error occurred.";
